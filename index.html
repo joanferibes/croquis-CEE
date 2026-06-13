@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#4A8A80">
+<title>Croquis CEE · Joanfe Ribes</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --verde:#4A8A80; --verde2:#7AADA3; --tinta:#22302D;
+    --fondo:#F2F4F3; --papel:#FFFFFF;
+    --ventana:#1E63B0; --puerta:#8A5A2B; --laser:#D93025;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--fondo);color:var(--tinta);}
+  #app{display:flex;flex-direction:column;height:100%;}
+
+  /* ---------- Cabecera ---------- */
+  header{background:var(--verde);color:#fff;display:flex;align-items:center;gap:8px;padding:8px 10px;flex:0 0 auto;}
+  header .logo{font-weight:700;letter-spacing:.5px;font-size:14px;white-space:nowrap;}
+  header input{flex:1;min-width:0;border:none;border-radius:8px;padding:8px 10px;font-size:14px;background:rgba(255,255,255,.18);color:#fff;}
+  header input::placeholder{color:rgba(255,255,255,.75);}
+  #btBtn{border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;gap:6px;}
+  #btDot{width:9px;height:9px;border-radius:50%;background:#C9D6D3;}
+  #btBtn.on #btDot{background:#5BE38A;box-shadow:0 0 6px #5BE38A;}
+
+  /* ---------- Lienzo ---------- */
+  #lienzoWrap{flex:1;position:relative;background:var(--papel);}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+  #hint{position:absolute;top:10px;left:0;right:0;text-align:center;pointer-events:none;color:#8AA39E;font-size:13px;padding:0 20px;}
+  #totalBar{position:absolute;bottom:10px;left:10px;background:rgba(74,138,128,.92);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;}
+  #laserToast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:var(--tinta);color:#fff;border-radius:20px;padding:8px 16px;font-size:14px;font-weight:700;display:none;z-index:5;}
+  #laserToast .pt{color:#FF8C82;}
+
+  /* ---------- Barra inferior ---------- */
+  nav{flex:0 0 auto;display:flex;background:#fff;border-top:1px solid #DDE5E3;padding:6px 4px calc(6px + env(safe-area-inset-bottom));}
+  nav button{flex:1;border:none;background:none;font-size:11px;color:var(--tinta);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;}
+  nav button .ic{font-size:20px;line-height:1;}
+  nav button.activo{color:var(--verde);font-weight:700;}
+  nav button:disabled{opacity:.35;}
+
+  /* ---------- Hojas (modales) ---------- */
+  .velo{position:fixed;inset:0;background:rgba(20,30,28,.45);display:none;z-index:10;}
+  .velo.abierto{display:block;}
+  .hoja{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));z-index:11;max-height:85%;overflow-y:auto;}
+  .hoja h2{margin:0 0 12px;font-size:16px;color:var(--verde);}
+  .tipos{display:flex;gap:8px;margin-bottom:14px;}
+  .tipos button{flex:1;padding:12px 4px;border-radius:10px;border:2px solid #D8E2E0;background:#fff;font-size:14px;font-weight:600;color:var(--tinta);}
+  .tipos button.sel{border-color:var(--verde);background:#EAF3F1;color:var(--verde);}
+  .campo{margin-bottom:12px;}
+  .campo label{display:block;font-size:12px;font-weight:600;color:#5C7370;margin-bottom:4px;}
+  .campo input,.campo select{width:100%;padding:13px 12px;font-size:20px;border:2px solid #D8E2E0;border-radius:10px;background:#fff;color:var(--tinta);}
+  .campo input:focus{outline:none;border-color:var(--verde);background:#F4FAF8;}
+  .campo input.laserOK{border-color:var(--laser);}
+  .laserHint{font-size:12px;color:var(--laser);font-weight:600;margin:-6px 0 12px;display:none;}
+  .laserHint.visible{display:block;}
+  .filaBtn{display:flex;gap:10px;margin-top:6px;}
+  .filaBtn button{flex:1;padding:14px;border-radius:12px;border:none;font-size:16px;font-weight:700;}
+  .bCancel{background:#ECF0EF;color:var(--tinta);}
+  .bOk{background:var(--verde);color:#fff;}
+  .bOk:disabled{opacity:.4;}
+
+  /* lista de tramos */
+  .filaSeg{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid #EDF1F0;font-size:14px;}
+  .filaSeg .num{width:26px;height:26px;border-radius:50%;background:#EAF3F1;color:var(--verde);font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .filaSeg .txt{flex:1;min-width:0;}
+  .filaSeg .txt small{color:#7A8C89;display:block;}
+  .filaSeg button{border:none;background:#F2F4F3;border-radius:8px;padding:8px 10px;font-size:15px;}
+  .menuOpc button{display:flex;align-items:center;gap:12px;width:100%;border:none;background:none;padding:14px 6px;font-size:16px;color:var(--tinta);border-bottom:1px solid #EDF1F0;text-align:left;}
+  .menuOpc button .ic{font-size:20px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="logo">CROQUIS</span>
+    <input id="nomProy" placeholder="Nombre / expediente" autocomplete="off">
+    <button id="btBtn" onclick="conectarLaser()"><span id="btDot"></span><span id="btTxt">Láser</span></button>
+  </header>
+
+  <div id="lienzoWrap">
+    <canvas id="cv"></canvas>
+    <div id="hint">Dibuja con el dedo la dirección del primer tramo</div>
+    <div id="totalBar" style="display:none"></div>
+    <div id="laserToast"></div>
+  </div>
+
+  <nav>
+    <button onclick="deshacer()" id="bUndo"><span class="ic">↩️</span>Deshacer</button>
+    <button onclick="nuevoTramo()" id="bNuevoT"><span class="ic">🔀</span>Tramo nuevo</button>
+    <button onclick="toggleLibre()" id="bLibre"><span class="ic">📐</span><span id="bLibreTxt">90°/45°</span></button>
+    <button onclick="abrirLista()"><span class="ic">📋</span>Lista</button>
+    <button onclick="abrirMenu()"><span class="ic">📤</span>Exportar</button>
+  </nav>
+</div>
+
+<!-- ===== Hoja: nuevo segmento ===== -->
+<div class="velo" id="veloSeg" onclick="if(event.target===this)cerrarSeg()">
+  <div class="hoja" onclick="event.stopPropagation()">
+    <h2 id="segTitulo">Nuevo tramo</h2>
+    <div class="tipos">
+      <button id="tPared" onclick="setTipo('pared')">Pared</button>
+      <button id="tVentana" onclick="setTipo('ventana')">Ventana</button>
+      <button id="tPuerta" onclick="setTipo('puerta')">Puerta</button>
+    </div>
+    <div class="laserHint" id="laserHint">📡 Pulsa DIST en el láser para rellenar el campo activo</div>
+    <div class="campo" id="cLong">
+      <label id="lblLong">Longitud (m)</label>
+      <input id="inLong" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00">
+    </div>
+    <div class="campo" id="cAlto" style="display:none">
+      <label>Alto (m)</label>
+      <input id="inAlto" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00">
+    </div>
+    <div class="campo" id="cMat" style="display:none">
+      <label>Material de carpintería</label>
+      <select id="inMat">
+        <option value="Aluminio" selected>Aluminio</option>
+        <option value="Aluminio RPT">Aluminio RPT</option>
+        <option value="PVC">PVC</option>
+        <option value="Madera">Madera</option>
+        <option value="Acero">Acero</option>
+      </select>
+    </div>
+    <div class="filaBtn">
+      <button class="bCancel" onclick="cerrarSeg()">Cancelar</button>
+      <button class="bOk" id="bAddSeg" onclick="guardarSeg()">Añadir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Hoja: lista ===== -->
+<div class="velo" id="veloLista" onclick="if(event.target===this)this.classList.remove('abierto')">
+  <div class="hoja" onclick="event.stopPropagation()">
+    <h2>Tramos medidos</h2>
+    <div id="listaSegs"></div>
+    <div class="filaBtn"><button class="bCancel" onclick="veloLista.classList.remove('abierto')">Cerrar</button></div>
+  </div>
+</div>
+
+<!-- ===== Hoja: menú exportar / proyectos ===== -->
+<div class="velo" id="veloMenu" onclick="if(event.target===this)this.classList.remove('abierto')">
+  <div class="hoja menuOpc" onclick="event.stopPropagation()">
+    <h2>Exportar y proyectos</h2>
+    <button onclick="exportarPDF()"><span class="ic">📄</span>Descargar PDF acotado</button>
+    <button onclick="exportarDXF()"><span class="ic">📐</span>Descargar DXF (CAD)</button>
+    <button onclick="guardarProyecto()"><span class="ic">💾</span>Guardar proyecto</button>
+    <button onclick="abrirProyectos()"><span class="ic">📂</span>Abrir proyecto guardado</button>
+    <button onclick="nuevoProyecto()"><span class="ic">🗑️</span>Nuevo croquis (vaciar)</button>
+    <div class="filaBtn"><button class="bCancel" onclick="veloMenu.classList.remove('abierto')">Cerrar</button></div>
+  </div>
+</div>
+
+<!-- ===== Hoja: proyectos guardados ===== -->
+<div class="velo" id="veloProys" onclick="if(event.target===this)this.classList.remove('abierto')">
+  <div class="hoja" onclick="event.stopPropagation()">
+    <h2>Proyectos guardados</h2>
+    <div id="listaProys"></div>
+    <div class="filaBtn"><button class="bCancel" onclick="veloProys.classList.remove('abierto')">Cerrar</button></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CROQUIS CEE · Joanfe Ribes Oficina Tècnica · v1.0
+   Croquis secuencial de envolvente con Leica DISTO D2 (BLE)
+   ========================================================= */
+
+// ---------- Modelo ----------
+// tramo = { origin:[x,y], segs:[ {kind,len,alto,mat,ang} ] }  (metros, ang en radianes, Y hacia abajo)
+let modelo = { nombre:'', tramos:[] };
+let anguloLibre = false;
+let pendienteNuevoTramo = false;
+let editando = null;            // {t,s} si se está editando un segmento existente
+let strokeAng = 0;              // ángulo del trazo pendiente
+let strokeOrigen = null;        // origen en mundo si es tramo nuevo
+let ultimoLaser = null;
+
+const fmt = n => (Math.round(n*100)/100).toFixed(2).replace('.',',');
+
+// ---------- Lienzo ----------
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let view = {s:60, cx:0, cy:0};  // escala px/m y centro del modelo
+
+function redim(){
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = r.width * devicePixelRatio;
+  cv.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ajustarVista(); dibujar();
+}
+window.addEventListener('resize', redim);
+
+function puntosTramo(t){
+  const pts=[t.origin.slice()];
+  let p=t.origin.slice();
+  for(const s of t.segs){
+    p=[p[0]+s.len*Math.cos(s.ang), p[1]+s.len*Math.sin(s.ang)];
+    pts.push(p.slice());
+  }
+  return pts;
+}
+function bboxModelo(){
+  let xs=[],ys=[];
+  for(const t of modelo.tramos) for(const p of puntosTramo(t)){xs.push(p[0]);ys.push(p[1]);}
+  if(!xs.length) return null;
+  return {x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};
+}
+function ajustarVista(){
+  const W=cv.width/devicePixelRatio, H=cv.height/devicePixelRatio;
+  const b=bboxModelo();
+  if(!b){view={s:60,cx:0,cy:0};return;}
+  const m=70; // margen px para cotas
+  const w=Math.max(b.x1-b.x0,0.5), h=Math.max(b.y1-b.y0,0.5);
+  view.s=Math.min((W-2*m)/w,(H-2*m)/h, 120);
+  view.cx=(b.x0+b.x1)/2; view.cy=(b.y0+b.y1)/2;
+}
+const w2s = p => { const W=cv.width/devicePixelRatio,H=cv.height/devicePixelRatio;
+  return [(p[0]-view.cx)*view.s+W/2,(p[1]-view.cy)*view.s+H/2]; };
+const s2w = p => { const W=cv.width/devicePixelRatio,H=cv.height/devicePixelRatio;
+  return [(p[0]-W/2)/view.s+view.cx,(p[1]-H/2)/view.s+view.cy]; };
+
+function etiquetasHuecos(){
+  // numeración V1.., P1.. en orden de creación
+  let nv=0,np=0; const map=new Map();
+  modelo.tramos.forEach((t,ti)=>t.segs.forEach((s,si)=>{
+    if(s.kind==='ventana') map.set(ti+'-'+si,'V'+(++nv));
+    if(s.kind==='puerta')  map.set(ti+'-'+si,'P'+(++np));
+  }));
+  return map;
+}
+
+function dibujar(){
+  const W=cv.width/devicePixelRatio,H=cv.height/devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+  // cuadrícula suave
+  ctx.strokeStyle='#EEF3F2'; ctx.lineWidth=1;
+  const paso=view.s>=30?view.s:view.s*5;
+  if(paso>14){ for(let x=(W/2-view.cx*view.s)%paso;x<W;x+=paso){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=(H/2-view.cy*view.s)%paso;y<H;y+=paso){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();} }
+
+  const tags=etiquetasHuecos();
+  modelo.tramos.forEach((t,ti)=>{
+    const pts=puntosTramo(t);
+    t.segs.forEach((s,si)=>{
+      const a=w2s(pts[si]), b=w2s(pts[si+1]);
+      const col = s.kind==='ventana'?'#1E63B0': s.kind==='puerta'?'#8A5A2B':'#22302D';
+      ctx.strokeStyle=col; ctx.lineWidth=s.kind==='pared'?3:5;
+      ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+      // marcas de vértice
+      ctx.fillStyle='#22302D';
+      [a,b].forEach(p=>{ctx.beginPath();ctx.arc(p[0],p[1],2.5,0,7);ctx.fill();});
+      // etiqueta
+      let txt;
+      if(s.kind==='pared') txt=fmt(s.len);
+      else { const tag=tags.get(ti+'-'+si);
+        txt=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):''); }
+      etiquetaLinea(a,b,txt,col,s.kind!=='pared');
+    });
+    // punto de inicio del tramo
+    if(t.segs.length===0){ const o=w2s(t.origin);
+      ctx.fillStyle='#4A8A80';ctx.beginPath();ctx.arc(o[0],o[1],5,0,7);ctx.fill(); }
+  });
+
+  // trazo pendiente (previsualización)
+  if(trazo.activo && trazo.pts.length>1){
+    ctx.strokeStyle='#4A8A80'; ctx.setLineDash([7,5]); ctx.lineWidth=2.5;
+    const a=trazo.pts[0], b=trazo.fin;
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  document.getElementById('hint').style.display = modelo.tramos.some(t=>t.segs.length)?'none':'block';
+  actualizarTotal();
+}
+function abreviaMat(m){return {'PVC':'PVC','Madera':'mad','Aluminio RPT':'RPT','Acero':'acero'}[m]||m;}
+
+function etiquetaLinea(a,b,txt,col,negrita){
+  const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+  let ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+  if(ang>Math.PI/2||ang<-Math.PI/2) ang+=Math.PI; // nunca boca abajo
+  ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
+  ctx.font=(negrita?'700 ':'600 ')+'12px system-ui';
+  ctx.fillStyle=col; ctx.textAlign='center';
+  ctx.fillText(txt,0,-9);
+  ctx.restore();
+}
+function actualizarTotal(){
+  let tot=0,nv=0,np=0;
+  modelo.tramos.forEach(t=>t.segs.forEach(s=>{tot+=s.len;if(s.kind==='ventana')nv++;if(s.kind==='puerta')np++;}));
+  const bar=document.getElementById('totalBar');
+  if(tot>0){bar.style.display='block';bar.textContent='Σ '+fmt(tot)+' m · '+nv+' V · '+np+' P';}
+  else bar.style.display='none';
+}
+
+// ---------- Trazo con el dedo ----------
+const trazo={activo:false,pts:[],fin:null};
+cv.addEventListener('pointerdown',e=>{
+  trazo.activo=true; trazo.pts=[[e.offsetX,e.offsetY]]; trazo.fin=[e.offsetX,e.offsetY];
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove',e=>{
+  if(!trazo.activo)return;
+  trazo.fin=[e.offsetX,e.offsetY];
+  // previsualización con snap
+  const a=trazo.pts[0]; const dx=trazo.fin[0]-a[0],dy=trazo.fin[1]-a[1];
+  const d=Math.hypot(dx,dy);
+  if(d>8){ const ang=snap(Math.atan2(dy,dx));
+    trazo.fin=[a[0]+d*Math.cos(ang),a[1]+d*Math.sin(ang)]; }
+  dibujar();
+});
+cv.addEventListener('pointerup',e=>{
+  if(!trazo.activo)return; trazo.activo=false;
+  const a=trazo.pts[0],b=trazo.fin;
+  const d=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  dibujar();
+  if(d<25) return; // toque accidental
+  strokeAng=snap(Math.atan2(b[1]-a[1],b[0]-a[0]));
+  if(modelo.tramos.length===0){ strokeOrigen=[0,0]; }
+  else if(pendienteNuevoTramo){ strokeOrigen=s2w(a); }
+  else strokeOrigen=null;
+  abrirSeg();
+});
+function snap(a){
+  const paso=anguloLibre?Math.PI/180:Math.PI/4;
+  return Math.round(a/paso)*paso;
+}
+
+// ---------- Hoja de segmento ----------
+const veloSeg=document.getElementById('veloSeg');
+let tipoSel='pared';
+function abrirSeg(){
+  editando=null; tipoSel='pared'; setTipo('pared');
+  document.getElementById('segTitulo').textContent='Nuevo tramo';
+  inLong.value=''; inAlto.value=''; inMat.value='Aluminio';
+  document.getElementById('laserHint').classList.toggle('visible', !!btCar);
+  veloSeg.classList.add('abierto');
+  setTimeout(()=>inLong.focus(),100);
+}
+function cerrarSeg(){veloSeg.classList.remove('abierto');editando=null;}
+function setTipo(t){
+  tipoSel=t;
+  ['tPared','tVentana','tPuerta'].forEach(id=>document.getElementById(id).classList.remove('sel'));
+  document.getElementById({pared:'tPared',ventana:'tVentana',puerta:'tPuerta'}[t]).classList.add('sel');
+  document.getElementById('lblLong').textContent = t==='pared'?'Longitud (m)':'Ancho (m)';
+  document.getElementById('cAlto').style.display = t==='pared'?'none':'block';
+  document.getElementById('cMat').style.display  = t==='pared'?'none':'block';
+}
+function guardarSeg(){
+  const len=parseFloat(inLong.value.replace(',','.'));
+  if(!(len>0)){inLong.focus();return;}
+  let seg={kind:tipoSel,len,ang:strokeAng};
+  if(tipoSel!=='pared'){
+    const alto=parseFloat(inAlto.value.replace(',','.'));
+    if(!(alto>0)){inAlto.focus();return;}
+    seg.alto=alto; seg.mat=inMat.value;
+  }
+  if(editando){ const s=modelo.tramos[editando.t].segs[editando.s];
+    seg.ang=s.ang; modelo.tramos[editando.t].segs[editando.s]=seg;
+  } else {
+    if(strokeOrigen!==null){ modelo.tramos.push({origin:strokeOrigen,segs:[]}); pendienteNuevoTramo=false; }
+    if(!modelo.tramos.length) modelo.tramos.push({origin:[0,0],segs:[]});
+    modelo.tramos[modelo.tramos.length-1].segs.push(seg);
+  }
+  cerrarSeg(); ajustarVista(); dibujar(); autosave();
+}
+
+// ---------- Botones ----------
+function deshacer(){
+  for(let i=modelo.tramos.length-1;i>=0;i--){
+    if(modelo.tramos[i].segs.length){modelo.tramos[i].segs.pop();
+      if(!modelo.tramos[i].segs.length&&i>0)modelo.tramos.pop();
+      break;}
+    else modelo.tramos.pop();
+  }
+  ajustarVista();dibujar();autosave();
+}
+function nuevoTramo(){
+  pendienteNuevoTramo=true;
+  document.getElementById('hint').style.display='block';
+  document.getElementById('hint').textContent='Dibuja el nuevo tramo donde quieras: empezará en un punto independiente';
+}
+function toggleLibre(){
+  anguloLibre=!anguloLibre;
+  document.getElementById('bLibre').classList.toggle('activo',anguloLibre);
+  document.getElementById('bLibreTxt').textContent=anguloLibre?'Libre':'90°/45°';
+}
+
+// ---------- Lista ----------
+const veloLista=document.getElementById('veloLista');
+function abrirLista(){
+  const cont=document.getElementById('listaSegs'); cont.innerHTML='';
+  const tags=etiquetasHuecos(); let n=0;
+  modelo.tramos.forEach((t,ti)=>t.segs.forEach((s,si)=>{
+    n++;
+    const div=document.createElement('div');div.className='filaSeg';
+    const desc = s.kind==='pared' ? 'Pared · '+fmt(s.len)+' m'
+      : tags.get(ti+'-'+si)+' '+(s.kind==='ventana'?'Ventana':'Puerta')+' · '+fmt(s.len)+'×'+fmt(s.alto)+' m';
+    const sub = s.kind==='pared'?'':('<small>'+s.mat+' · '+fmt(s.len*s.alto)+' m²</small>');
+    div.innerHTML='<span class="num">'+n+'</span><span class="txt">'+desc+sub+'</span>';
+    const bE=document.createElement('button');bE.textContent='✏️';
+    bE.onclick=()=>{veloLista.classList.remove('abierto');editarSeg(ti,si);};
+    const bX=document.createElement('button');bX.textContent='🗑️';
+    bX.onclick=()=>{ modelo.tramos[ti].segs.splice(si,1);
+      modelo.tramos=modelo.tramos.filter((t,idx)=>t.segs.length||idx===modelo.tramos.length-1);
+      ajustarVista();dibujar();autosave();abrirLista(); };
+    div.appendChild(bE);div.appendChild(bX);cont.appendChild(div);
+  }));
+  if(!n)cont.innerHTML='<p style="color:#7A8C89">Aún no hay tramos.</p>';
+  veloLista.classList.add('abierto');
+}
+function editarSeg(ti,si){
+  const s=modelo.tramos[ti].segs[si];
+  editando={t:ti,s:si};
+  setTipo(s.kind);
+  document.getElementById('segTitulo').textContent='Editar tramo';
+  inLong.value=s.len; inAlto.value=s.alto||''; inMat.value=s.mat||'Aluminio';
+  document.getElementById('laserHint').classList.toggle('visible', !!btCar);
+  veloSeg.classList.add('abierto');
+}
+
+// ---------- Bluetooth Leica DISTO ----------
+const DISTO_SVC ='3ab10100-f831-4395-b29d-570977d5bf94';
+const DISTO_DIST='3ab10101-f831-4395-b29d-570977d5bf94';
+let btDev=null, btCar=null;
+
+async function conectarLaser(){
+  if(!navigator.bluetooth){alert('Este navegador no soporta Web Bluetooth.\nUsa Google Chrome en Android.');return;}
+  if(btCar){ btDev.gatt.disconnect(); return; }
+  try{
+    btDev=await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'DISTO'},{namePrefix:'Leica'}],
+      optionalServices:[DISTO_SVC]
+    });
+    btDev.addEventListener('gattserverdisconnected',()=>{btCar=null;estadoBT(false);});
+    const server=await btDev.gatt.connect();
+    const svc=await server.getPrimaryService(DISTO_SVC);
+    btCar=await svc.getCharacteristic(DISTO_DIST);
+    await btCar.startNotifications();
+    btCar.addEventListener('characteristicvaluechanged',e=>{
+      const m=e.target.value.getFloat32(0,true);
+      if(m>0&&m<300) recibirLaser(m);
+    });
+    estadoBT(true);
+  }catch(err){
+    if(err.name!=='NotFoundError') alert('No se pudo conectar: '+err.message+'\n\nComprueba que el DISTO está encendido, el Bluetooth activado (icono BT en su pantalla) y que la app DISTO Plan de Leica está CERRADA.');
+    btCar=null; estadoBT(false);
+  }
+}
+function estadoBT(on){
+  document.getElementById('btBtn').classList.toggle('on',on);
+  document.getElementById('btTxt').textContent=on?'D2 ✓':'Láser';
+}
+function recibirLaser(m){
+  ultimoLaser=m;
+  if(navigator.vibrate)navigator.vibrate(40);
+  if(veloSeg.classList.contains('abierto')){
+    // rellenar el campo activo y avanzar
+    const act=document.activeElement;
+    const destino=(act===inAlto)?inAlto:inLong;
+    destino.value=m.toFixed(2);
+    destino.classList.add('laserOK');setTimeout(()=>destino.classList.remove('laserOK'),600);
+    if(destino===inLong && tipoSel!=='pared') inAlto.focus();
+    else destino.blur();
+  } else {
+    const t=document.getElementById('laserToast');
+    t.innerHTML='📡 <span class="pt">'+fmt(m)+' m</span>';
+    t.style.display='block';
+    clearTimeout(t._to);t._to=setTimeout(()=>t.style.display='none',2500);
+  }
+}
+
+// ---------- Persistencia ----------
+function autosave(){
+  modelo.nombre=document.getElementById('nomProy').value;
+  localStorage.setItem('croquis_actual',JSON.stringify(modelo));
+}
+document.getElementById('nomProy').addEventListener('input',autosave);
+function cargarActual(){
+  try{const m=JSON.parse(localStorage.getItem('croquis_actual'));
+    if(m&&m.tramos){modelo=m;document.getElementById('nomProy').value=m.nombre||'';}}catch(e){}
+}
+const veloMenu=document.getElementById('veloMenu');
+const veloProys=document.getElementById('veloProys');
+function abrirMenu(){veloMenu.classList.add('abierto');}
+function guardarProyecto(){
+  autosave();
+  if(!modelo.nombre){alert('Pon primero un nombre o nº de expediente arriba.');return;}
+  const ps=JSON.parse(localStorage.getItem('croquis_proyectos')||'[]');
+  const i=ps.findIndex(p=>p.nombre===modelo.nombre);
+  const copia=JSON.parse(JSON.stringify(modelo)); copia.fecha=new Date().toISOString();
+  if(i>=0)ps[i]=copia;else ps.push(copia);
+  localStorage.setItem('croquis_proyectos',JSON.stringify(ps));
+  veloMenu.classList.remove('abierto');
+  alert('Proyecto guardado: '+modelo.nombre);
+}
+function abrirProyectos(){
+  veloMenu.classList.remove('abierto');
+  const ps=JSON.parse(localStorage.getItem('croquis_proyectos')||'[]');
+  const cont=document.getElementById('listaProys');cont.innerHTML='';
+  if(!ps.length)cont.innerHTML='<p style="color:#7A8C89">No hay proyectos guardados.</p>';
+  ps.forEach((p,i)=>{
+    const div=document.createElement('div');div.className='filaSeg';
+    div.innerHTML='<span class="txt">'+p.nombre+'<small>'+new Date(p.fecha).toLocaleDateString('es-ES')+'</small></span>';
+    const bA=document.createElement('button');bA.textContent='📂';
+    bA.onclick=()=>{modelo=JSON.parse(JSON.stringify(p));
+      document.getElementById('nomProy').value=p.nombre;
+      veloProys.classList.remove('abierto');ajustarVista();dibujar();autosave();};
+    const bX=document.createElement('button');bX.textContent='🗑️';
+    bX.onclick=()=>{ps.splice(i,1);localStorage.setItem('croquis_proyectos',JSON.stringify(ps));abrirProyectos();};
+    div.appendChild(bA);div.appendChild(bX);cont.appendChild(div);
+  });
+  veloProys.classList.add('abierto');
+}
+function nuevoProyecto(){
+  if(modelo.tramos.length&&!confirm('¿Vaciar el croquis actual? (guárdalo antes si lo necesitas)'))return;
+  modelo={nombre:'',tramos:[]};document.getElementById('nomProy').value='';
+  pendienteNuevoTramo=false;
+  veloMenu.classList.remove('abierto');ajustarVista();dibujar();autosave();
+  document.getElementById('hint').textContent='Dibuja con el dedo la dirección del primer tramo';
+}
+
+// ---------- Exportar PDF ----------
+function exportarPDF(){
+  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const nombre=document.getElementById('nomProy').value||'Sin nombre';
+  const fecha=new Date().toLocaleDateString('es-ES');
+
+  // Cabecera
+  doc.setFillColor(74,138,128);doc.rect(0,0,210,22,'F');
+  doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(13);
+  doc.text('CROQUIS DE TOMA DE DATOS · CERTIFICADO DE EFICIENCIA ENERGÉTICA',105,9,{align:'center'});
+  doc.setFontSize(10);doc.setFont('helvetica','normal');
+  doc.text(nombre+'  ·  '+fecha,105,16,{align:'center'});
+
+  // Dibujo encajado
+  const box={x:15,y:30,w:180,h:135};
+  const b=bboxModelo();
+  const esc=Math.min(box.w/Math.max(b.x1-b.x0,0.5),box.h/Math.max(b.y1-b.y0,0.5))*0.86;
+  const ox=box.x+box.w/2-(b.x0+b.x1)/2*esc, oy=box.y+box.h/2-(b.y0+b.y1)/2*esc;
+  const W=p=>[p[0]*esc+ox,p[1]*esc+oy];
+  const tags=etiquetasHuecos();
+
+  modelo.tramos.forEach((t,ti)=>{
+    const pts=puntosTramo(t);
+    t.segs.forEach((s,si)=>{
+      const a=W(pts[si]),bb=W(pts[si+1]);
+      if(s.kind==='ventana'){doc.setDrawColor(30,99,176);doc.setLineWidth(1.1);}
+      else if(s.kind==='puerta'){doc.setDrawColor(138,90,43);doc.setLineWidth(1.1);}
+      else{doc.setDrawColor(34,48,45);doc.setLineWidth(0.55);}
+      doc.line(a[0],a[1],bb[0],bb[1]);
+      // etiqueta
+      let txt,col;
+      if(s.kind==='pared'){txt=fmt(s.len);col=[34,48,45];}
+      else{const tag=tags.get(ti+'-'+si);
+        txt=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):'');
+        col=s.kind==='ventana'?[30,99,176]:[138,90,43];}
+      const mx=(a[0]+bb[0])/2,my=(a[1]+bb[1])/2;
+      let ang=Math.atan2(bb[1]-a[1],bb[0]-a[0]);
+      if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
+      doc.setTextColor(...col);doc.setFontSize(8);
+      doc.setFont('helvetica',s.kind==='pared'?'normal':'bold');
+      doc.text(txt,mx+2.2*Math.sin(ang),my-2.2*Math.cos(ang),{angle:-ang*180/Math.PI,align:'center'});
+      // marcas de vértice
+      doc.setFillColor(34,48,45);
+      doc.circle(a[0],a[1],0.45,'F');doc.circle(bb[0],bb[1],0.45,'F');
+    });
+  });
+
+  // Tabla de huecos
+  let y=178;
+  doc.setFillColor(74,138,128);doc.rect(15,y,180,7,'F');
+  doc.setTextColor(255);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  const cols=[18,38,78,103,128,153];
+  ['Nº','Tipo','Ancho (m)','Alto (m)','Sup. (m²)','Material'].forEach((h,i)=>doc.text(h,cols[i],y+5));
+  y+=7;
+  doc.setFont('helvetica','normal');doc.setTextColor(34,48,45);
+  let sumV=0,sumP=0;
+  modelo.tramos.forEach((t,ti)=>t.segs.forEach((s,si)=>{
+    if(s.kind==='pared')return;
+    if(y>275){doc.addPage();y=20;}
+    const tag=tags.get(ti+'-'+si);const sup=s.len*s.alto;
+    if(s.kind==='ventana')sumV+=sup;else sumP+=sup;
+    if((y/7)%2<1){doc.setFillColor(243,247,246);doc.rect(15,y,180,7,'F');}
+    [tag, s.kind==='ventana'?'Ventana':'Puerta', fmt(s.len), fmt(s.alto), fmt(sup), s.mat]
+      .forEach((v,i)=>doc.text(String(v),cols[i],y+5));
+    y+=7;
+  }));
+  y+=4;
+  doc.setFont('helvetica','bold');
+  doc.text('Σ Ventanas: '+fmt(sumV)+' m²    Σ Puertas: '+fmt(sumP)+' m²',18,y+4);
+  let per=0;modelo.tramos.forEach(t=>t.segs.forEach(s=>per+=s.len));
+  doc.text('Longitud total de envolvente medida: '+fmt(per)+' m',18,y+10);
+
+  // Pie
+  doc.setDrawColor(122,173,163);doc.setLineWidth(0.4);doc.line(15,286,195,286);
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(90,110,107);
+  doc.text('Joanfe Ribes Oficina Tècnica · Arquitecto Técnico col. 3.184 COAATIEA · 605 875 899 · oficinatecnica@joanferibes.com',105,291,{align:'center'});
+
+  doc.save('Croquis_'+(nombre.replace(/[^a-zA-Z0-9_-]/g,'_')||'CEE')+'.pdf');
+  veloMenu.classList.remove('abierto');
+}
+
+// ---------- Exportar DXF ----------
+function exportarDXF(){
+  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+  const tags=etiquetasHuecos();
+  let e='';
+  const linea=(cap,a,b)=>{e+='0\nLINE\n8\n'+cap+'\n10\n'+a[0].toFixed(3)+'\n20\n'+(-a[1]).toFixed(3)+'\n30\n0\n11\n'+b[0].toFixed(3)+'\n21\n'+(-b[1]).toFixed(3)+'\n31\n0\n';};
+  const texto=(cap,p,h,t,ang)=>{e+='0\nTEXT\n8\n'+cap+'\n10\n'+p[0].toFixed(3)+'\n20\n'+(-p[1]).toFixed(3)+'\n30\n0\n40\n'+h+'\n1\n'+t+'\n50\n'+(ang||0).toFixed(2)+'\n72\n1\n11\n'+p[0].toFixed(3)+'\n21\n'+(-p[1]).toFixed(3)+'\n31\n0\n';};
+  modelo.tramos.forEach((t,ti)=>{
+    const pts=puntosTramo(t);
+    t.segs.forEach((s,si)=>{
+      const a=pts[si],b=pts[si+1];
+      const cap=s.kind==='pared'?'MUROS':'HUECOS';
+      linea(cap,a,b);
+      const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+      let ang=Math.atan2(-(b[1]-a[1]),b[0]-a[0])*180/Math.PI;
+      if(ang>90||ang<=-90)ang+=180;
+      const ar=ang*Math.PI/180, off=0.18;
+      const p=[m[0]-off*Math.sin(ar), m[1]-off*Math.cos(ar)];
+      let txt;
+      if(s.kind==='pared')txt=s.len.toFixed(2);
+      else txt=tags.get(ti+'-'+si)+': '+s.len.toFixed(2)+'x'+s.alto.toFixed(2)+' '+(s.mat||'');
+      texto('COTAS',p,0.15,txt,ang);
+    });
+  });
+  const dxf='0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n6\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'+e+'0\nENDSEC\n0\nEOF\n';
+  const blob=new Blob([dxf],{type:'application/dxf'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  const nombre=document.getElementById('nomProy').value||'CEE';
+  a.download='Croquis_'+nombre.replace(/[^a-zA-Z0-9_-]/g,'_')+'.dxf';a.click();
+  veloMenu.classList.remove('abierto');
+}
+
+// ---------- Arranque ----------
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+cargarActual();
+redim();
+</script>
+</body>
+</html>

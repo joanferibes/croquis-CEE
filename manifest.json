@@ -1,0 +1,15 @@
+{
+  "name": "Croquis CEE - Joanfe Ribes",
+  "short_name": "Croquis CEE",
+  "description": "Croquis acotado de envolvente para certificados de eficiencia energética con Leica DISTO D2",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2F4F3",
+  "theme_color": "#4A8A80",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
