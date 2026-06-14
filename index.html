@@ -91,6 +91,7 @@
 
   <nav>
     <button onclick="deshacer()" id="bUndo"><span class="ic">↩️</span>Deshacer</button>
+    <button onclick="cerrarPoli()" id="bCerrar"><span class="ic">⭕</span>Cerrar</button>
     <button onclick="nuevoTramo()" id="bNuevoT"><span class="ic">🔀</span>Tramo nuevo</button>
     <button onclick="toggleLibre()" id="bLibre"><span class="ic">📐</span><span id="bLibreTxt">90°/45°</span></button>
     <button onclick="abrirLista()"><span class="ic">📋</span>Lista</button>
@@ -148,6 +149,8 @@
     <h2>Exportar y proyectos</h2>
     <button onclick="exportarPDF()"><span class="ic">📄</span>Descargar PDF acotado</button>
     <button onclick="exportarDXF()"><span class="ic">📐</span>Descargar DXF (CAD)</button>
+    <button onclick="enviarBorrador()"><span class="ic">📧</span>Enviar borrador (PDF + DXF)</button>
+    <button onclick="configCorreo()"><span class="ic">⚙️</span>Configurar correo colaborador</button>
     <button onclick="guardarProyecto()"><span class="ic">💾</span>Guardar proyecto</button>
     <button onclick="abrirProyectos()"><span class="ic">📂</span>Abrir proyecto guardado</button>
     <button onclick="nuevoProyecto()"><span class="ic">🗑️</span>Nuevo croquis (vaciar)</button>
@@ -249,18 +252,21 @@ function dibujar(){
     const pts=puntosTramo(t);
     t.segs.forEach((s,si)=>{
       const a=w2s(pts[si]), b=w2s(pts[si+1]);
-      const col = s.kind==='ventana'?'#1E63B0': s.kind==='puerta'?'#8A5A2B':'#22302D';
-      ctx.strokeStyle=col; ctx.lineWidth=s.kind==='pared'?3:5;
+      const esHueco = s.kind!=='pared';
+      // línea: hueco en ROJO, pared en tinta
+      ctx.strokeStyle = esHueco ? '#D93025' : '#22302D';
+      ctx.lineWidth = esHueco ? 5 : 3;
       ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
       // marcas de vértice
       ctx.fillStyle='#22302D';
       [a,b].forEach(p=>{ctx.beginPath();ctx.arc(p[0],p[1],2.5,0,7);ctx.fill();});
-      // etiqueta
-      let txt;
-      if(s.kind==='pared') txt=fmt(s.len);
-      else { const tag=tags.get(ti+'-'+si);
-        txt=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):''); }
-      etiquetaLinea(a,b,txt,col,s.kind!=='pared');
+      // COTA de longitud (todo) -> lado +1 ; TEXTO de hueco -> lado -1
+      etiquetaLinea(a,b,fmt(s.len), '#000', false, +1);
+      if(esHueco){
+        const tag=tags.get(ti+'-'+si);
+        const txtH=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):'');
+        etiquetaLinea(a,b,txtH, '#000', true, -1);
+      }
     });
     // punto de inicio del tramo
     if(t.segs.length===0){ const o=w2s(t.origin);
@@ -279,14 +285,19 @@ function dibujar(){
 }
 function abreviaMat(m){return {'PVC':'PVC','Madera':'mad','Aluminio RPT':'RPT','Acero':'acero'}[m]||m;}
 
-function etiquetaLinea(a,b,txt,col,negrita){
+function etiquetaLinea(a,b,txt,col,negrita,lado){
+  lado = lado||1;
   const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
   let ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
-  if(ang>Math.PI/2||ang<-Math.PI/2) ang+=Math.PI; // nunca boca abajo
+  let flip=1;
+  if(ang>Math.PI/2||ang<-Math.PI/2){ ang+=Math.PI; flip=-1; } // nunca boca abajo
+  // desplazamiento perpendicular: lado=+1 cota, lado=-1 texto hueco
+  const off = 9 * lado * flip;
   ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
   ctx.font=(negrita?'700 ':'600 ')+'12px system-ui';
   ctx.fillStyle=col; ctx.textAlign='center';
-  ctx.fillText(txt,0,-9);
+  ctx.textBaseline = off<0 ? 'bottom' : 'top';
+  ctx.fillText(txt, 0, off<0 ? -4 : 4);
   ctx.restore();
 }
 function actualizarTotal(){
@@ -383,6 +394,19 @@ function nuevoTramo(){
   pendienteNuevoTramo=true;
   document.getElementById('hint').style.display='block';
   document.getElementById('hint').textContent='Dibuja el nuevo tramo donde quieras: empezará en un punto independiente';
+}
+function cerrarPoli(){
+  const t=modelo.tramos[modelo.tramos.length-1];
+  if(!t||t.segs.length<2){alert('Necesitas al menos dos tramos para cerrar.');return;}
+  const pts=puntosTramo(t);
+  const ini=pts[0], fin=pts[pts.length-1];
+  const dx=ini[0]-fin[0], dy=ini[1]-fin[1];
+  const len=Math.hypot(dx,dy);
+  if(len<0.01){alert('La polilínea ya está cerrada.');return;}
+  const ang=Math.atan2(dy,dx);
+  if(!confirm('¿Cerrar el contorno con un tramo de pared de '+fmt(len)+' m hasta el punto inicial?'))return;
+  t.segs.push({kind:'pared',len,ang,cierre:true});
+  ajustarVista();dibujar();autosave();
 }
 function toggleLibre(){
   anguloLibre=!anguloLibre;
@@ -525,8 +549,8 @@ function nuevoProyecto(){
 }
 
 // ---------- Exportar PDF ----------
-function exportarPDF(){
-  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+function nombreFichero(){ return (document.getElementById('nomProy').value||'CEE').replace(/[^a-zA-Z0-9_-]/g,'_'); }
+function construirPDF(){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const nombre=document.getElementById('nomProy').value||'Sin nombre';
@@ -551,22 +575,27 @@ function exportarPDF(){
     const pts=puntosTramo(t);
     t.segs.forEach((s,si)=>{
       const a=W(pts[si]),bb=W(pts[si+1]);
-      if(s.kind==='ventana'){doc.setDrawColor(30,99,176);doc.setLineWidth(1.1);}
-      else if(s.kind==='puerta'){doc.setDrawColor(138,90,43);doc.setLineWidth(1.1);}
+      const esHueco = s.kind!=='pared';
+      if(esHueco){doc.setDrawColor(217,48,37);doc.setLineWidth(1.2);}   // hueco rojo
       else{doc.setDrawColor(34,48,45);doc.setLineWidth(0.55);}
       doc.line(a[0],a[1],bb[0],bb[1]);
-      // etiqueta
-      let txt,col;
-      if(s.kind==='pared'){txt=fmt(s.len);col=[34,48,45];}
-      else{const tag=tags.get(ti+'-'+si);
-        txt=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):'');
-        col=s.kind==='ventana'?[30,99,176]:[138,90,43];}
       const mx=(a[0]+bb[0])/2,my=(a[1]+bb[1])/2;
-      let ang=Math.atan2(bb[1]-a[1],bb[0]-a[0]);
-      if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
-      doc.setTextColor(...col);doc.setFontSize(8);
-      doc.setFont('helvetica',s.kind==='pared'?'normal':'bold');
-      doc.text(txt,mx+2.2*Math.sin(ang),my-2.2*Math.cos(ang),{angle:-ang*180/Math.PI,align:'center'});
+      let ang=Math.atan2(bb[1]-a[1],bb[0]-a[0]); let flip=1;
+      if(ang>Math.PI/2||ang<-Math.PI/2){ang+=Math.PI;flip=-1;}
+      const px=Math.sin(ang), py=-Math.cos(ang); // perpendicular unit (pantalla->pdf)
+      doc.setTextColor(0,0,0);doc.setFontSize(8);
+      // COTA de longitud, lado +1
+      doc.setFont('helvetica','normal');
+      const d1=2.4*flip;
+      doc.text(fmt(s.len), mx+px*d1, my+py*d1, {angle:-ang*180/Math.PI,align:'center',baseline:flip>0?'bottom':'top'});
+      // TEXTO de hueco, lado -1
+      if(esHueco){
+        const tag=tags.get(ti+'-'+si);
+        const txtH=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):'');
+        doc.setFont('helvetica','bold');
+        const d2=-2.4*flip;
+        doc.text(txtH, mx+px*d2, my+py*d2, {angle:-ang*180/Math.PI,align:'center',baseline:flip>0?'top':'bottom'});
+      }
       // marcas de vértice
       doc.setFillColor(34,48,45);
       doc.circle(a[0],a[1],0.45,'F');doc.circle(bb[0],bb[1],0.45,'F');
@@ -602,14 +631,16 @@ function exportarPDF(){
   doc.setDrawColor(122,173,163);doc.setLineWidth(0.4);doc.line(15,286,195,286);
   doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(90,110,107);
   doc.text('Joanfe Ribes Oficina Tècnica · Arquitecto Técnico col. 3.184 COAATIEA · 605 875 899 · oficinatecnica@joanferibes.com',105,291,{align:'center'});
-
-  doc.save('Croquis_'+(nombre.replace(/[^a-zA-Z0-9_-]/g,'_')||'CEE')+'.pdf');
+  return doc;
+}
+function exportarPDF(){
+  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+  construirPDF().save('Croquis_'+nombreFichero()+'.pdf');
   veloMenu.classList.remove('abierto');
 }
 
 // ---------- Exportar DXF ----------
-function exportarDXF(){
-  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+function construirDXF(){
   const tags=etiquetasHuecos();
   let e='';
   const linea=(cap,a,b)=>{e+='0\nLINE\n8\n'+cap+'\n10\n'+a[0].toFixed(3)+'\n20\n'+(-a[1]).toFixed(3)+'\n30\n0\n11\n'+b[0].toFixed(3)+'\n21\n'+(-b[1]).toFixed(3)+'\n31\n0\n';};
@@ -631,12 +662,51 @@ function exportarDXF(){
       texto('COTAS',p,0.15,txt,ang);
     });
   });
-  const dxf='0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n6\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'+e+'0\nENDSEC\n0\nEOF\n';
-  const blob=new Blob([dxf],{type:'application/dxf'});
+  return '0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n6\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'+e+'0\nENDSEC\n0\nEOF\n';
+}
+function exportarDXF(){
+  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que exportar.');return;}
+  const blob=new Blob([construirDXF()],{type:'application/dxf'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  const nombre=document.getElementById('nomProy').value||'CEE';
-  a.download='Croquis_'+nombre.replace(/[^a-zA-Z0-9_-]/g,'_')+'.dxf';a.click();
+  a.download='Croquis_'+nombreFichero()+'.dxf';a.click();
   veloMenu.classList.remove('abierto');
+}
+
+// ---------- Configuración de correo y envío a borrador ----------
+// Pega aquí la URL de tu Apps Script (Web App) tras desplegarlo:
+const SCRIPT_URL = 'PEGAR_AQUI_URL_APPS_SCRIPT';
+
+function configCorreo(){
+  const actual=localStorage.getItem('croquis_correo')||'';
+  const val=prompt('Correo del colaborador (destinatario del borrador):',actual);
+  if(val===null)return;
+  localStorage.setItem('croquis_correo',val.trim());
+  alert(val.trim()?'Correo guardado: '+val.trim():'Correo borrado.');
+}
+function b64(str){ return btoa(unescape(encodeURIComponent(str))); }
+
+async function enviarBorrador(){
+  if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que enviar.');return;}
+  if(SCRIPT_URL.startsWith('PEGAR')){alert('Falta configurar la URL del Apps Script en el código (constante SCRIPT_URL).');return;}
+  const dest=localStorage.getItem('croquis_correo')||'';
+  if(!dest){ if(confirm('No hay correo de colaborador configurado. ¿Configurarlo ahora?')) configCorreo(); return; }
+  const nombre=document.getElementById('nomProy').value||'Croquis CEE';
+  const fich=nombreFichero();
+  // PDF en base64
+  const pdfB64 = construirPDF().output('datauristring').split(',')[1];
+  const dxfB64 = b64(construirDXF());
+  const payload={
+    destinatario:dest, nombre, fichero:fich,
+    pdf:pdfB64, dxf:dxfB64
+  };
+  try{
+    // POST con text/plain evita preflight CORS en Apps Script
+    const r=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+    const res=await r.json();
+    if(res.ok){ veloMenu.classList.remove('abierto');
+      alert('✅ Borrador creado en Gmail para:\n'+dest+'\n\nÁbrelo en Gmail y pulsa Enviar.'); }
+    else alert('Error del servidor: '+(res.error||'desconocido'));
+  }catch(err){ alert('No se pudo enviar: '+err.message+'\nComprueba la conexión y la URL del Apps Script.'); }
 }
 
 // ---------- Arranque ----------
