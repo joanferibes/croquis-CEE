@@ -1,4 +1,4 @@
-const CACHE = 'croquis-cee-v3';
+const CACHE = 'croquis-cee-v4';
 const FICHEROS = [
   './',
   './index.html',

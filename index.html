@@ -390,24 +390,9 @@ function dibujar(){
         const txtH=tag+': '+fmt(s.len)+'×'+fmt(s.alto)+(s.mat&&s.mat!=='Aluminio'?' '+abreviaMat(s.mat):'');
         etiquetaLinea(a,b,txtH, '#000', true, -1);
       } else if(zona!=='ext'){
-        // etiqueta MED/COM al lado -1
-        etiquetaLinea(a,b, zona==='med'?'MED':'COM', '#5C7370', true, -1);
+        // etiqueta de zona al lado -1, palabra entera
+        etiquetaLinea(a,b, zona==='med'?'Medianera':'Zona común', '#5C7370', true, -1);
       }
-    });
-    // orientación de fachadas con hueco
-    t.segs.forEach((s,si)=>{
-      if(s.kind==='pared') return;
-      const a=w2s(pts[si]), b=w2s(pts[si+1]);
-      const ne=normalExterior(pts[si],pts[si+1],horario);
-      const card=orientacionCardinal(ne[0],ne[1],modelo.norte||0);
-      // dibujar la orientación al lado exterior, en el medio
-      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
-      // ne está en coords mundo (mismo signo que pantalla salvo escala) -> normalizar a pantalla
-      const off=20;
-      ctx.save(); ctx.font='700 12px system-ui'; ctx.fillStyle='#D93025';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('('+card+')', mx+ne[0]*off, my+ne[1]*off);
-      ctx.restore();
     });
     // punto de inicio del tramo
     if(t.segs.length===0){ const o=w2s(t.origin);
@@ -595,14 +580,21 @@ function abrirLista(){
   const cont=document.getElementById('listaSegs'); cont.innerHTML='';
   const tags=etiquetasHuecos(); let n=0;
   const zonaTxt={ext:'exterior',med:'medianera',com:'z. común'};
-  modelo.tramos.forEach((t,ti)=>t.segs.forEach((s,si)=>{
+  modelo.tramos.forEach((t,ti)=>{
+    const ptsT=puntosTramo(t); const horarioT=areaSigno(ptsT)>0;
+    t.segs.forEach((s,si)=>{
     n++;
     const div=document.createElement('div');div.className='filaSeg';
     const desc = s.kind==='pared' ? 'Pared · '+fmt(s.len)+' m'
       : tags.get(ti+'-'+si)+' '+(s.kind==='ventana'?'Ventana':'Puerta')+' · '+fmt(s.len)+'×'+fmt(s.alto)+' m';
-    const sub = s.kind==='pared'
-      ? (s.zona&&s.zona!=='ext'?('<small>'+zonaTxt[s.zona]+'</small>'):'')
-      : ('<small>'+s.mat+' · '+fmt(s.len*s.alto)+' m²</small>');
+    let sub;
+    if(s.kind==='pared'){
+      sub = (s.zona&&s.zona!=='ext')?('<small>'+zonaTxt[s.zona]+'</small>'):'';
+    } else {
+      const ne=normalExterior(ptsT[si],ptsT[si+1],horarioT);
+      const card=orientacionCardinal(ne[0],ne[1],modelo.norte||0);
+      sub = '<small>'+s.mat+' · '+fmt(s.len*s.alto)+' m² · Orientación '+card+'</small>';
+    }
     div.innerHTML='<span class="num">'+n+'</span><span class="txt">'+desc+sub+'</span>';
     const bE=document.createElement('button');bE.textContent='✏️';
     bE.onclick=()=>{veloLista.classList.remove('abierto');editarSeg(ti,si);};
@@ -611,7 +603,7 @@ function abrirLista(){
       modelo.tramos=modelo.tramos.filter((t,idx)=>t.segs.length||idx===modelo.tramos.length-1);
       ajustarVista();dibujar();autosave();abrirLista(); };
     div.appendChild(bE);div.appendChild(bX);cont.appendChild(div);
-  }));
+  });});
   if(!n)cont.innerHTML='<p style="color:#7A8C89">Aún no hay tramos.</p>';
   veloLista.classList.add('abierto');
 }
@@ -870,16 +862,8 @@ function construirPDF(){
         doc.text(txtH, mx+px*d2, my+py*d2, {angle:-ang*180/Math.PI,align:'center',baseline:flip>0?'top':'bottom'});
       } else if(zona!=='ext'){
         doc.setFont('helvetica','bold');doc.setTextColor(92,115,112);
-        doc.text(zona==='med'?'MED':'COM', mx+px*d2, my+py*d2, {angle:-ang*180/Math.PI,align:'center',baseline:flip>0?'top':'bottom'});
+        doc.text(zona==='med'?'Medianera':'Zona común', mx+px*d2, my+py*d2, {angle:-ang*180/Math.PI,align:'center',baseline:flip>0?'top':'bottom'});
         doc.setTextColor(0,0,0);
-      }
-      // orientación de fachada con hueco
-      if(esHueco){
-        const ne=normalExterior(pts[si],pts[si+1],horario);
-        const card=orientacionCardinal(ne[0],ne[1],modelo.norte||0);
-        doc.setTextColor(217,48,37);doc.setFont('helvetica','bold');doc.setFontSize(7);
-        doc.text('('+card+')', mx+ne[0]*4.5, my+ne[1]*4.5, {align:'center',baseline:'middle'});
-        doc.setTextColor(0,0,0);doc.setFontSize(8);
       }
       doc.setFillColor(34,48,45);
       doc.circle(a[0],a[1],0.45,'F');doc.circle(bb[0],bb[1],0.45,'F');
@@ -892,21 +876,25 @@ function construirPDF(){
   let y=178;
   doc.setFillColor(74,138,128);doc.rect(15,y,180,7,'F');
   doc.setTextColor(255);doc.setFontSize(9);doc.setFont('helvetica','bold');
-  const cols=[18,38,78,103,128,153];
-  ['Nº','Tipo','Ancho (m)','Alto (m)','Sup. (m²)','Material'].forEach((h,i)=>doc.text(h,cols[i],y+5));
+  const cols=[18,33,62,87,112,140,170];
+  ['Nº','Tipo','Ancho (m)','Alto (m)','Sup. (m²)','Material','Orient.'].forEach((h,i)=>doc.text(h,cols[i],y+5));
   y+=7;
   doc.setFont('helvetica','normal');doc.setTextColor(34,48,45);
   let sumV=0,sumP=0;
-  modelo.tramos.forEach((t,ti)=>t.segs.forEach((s,si)=>{
+  modelo.tramos.forEach((t,ti)=>{
+    const ptsT=puntosTramo(t); const horarioT=areaSigno(ptsT)>0;
+    t.segs.forEach((s,si)=>{
     if(s.kind==='pared')return;
     if(y>275){doc.addPage();y=20;}
     const tag=tags.get(ti+'-'+si);const sup=s.len*s.alto;
     if(s.kind==='ventana')sumV+=sup;else sumP+=sup;
+    const ne=normalExterior(ptsT[si],ptsT[si+1],horarioT);
+    const card=orientacionCardinal(ne[0],ne[1],modelo.norte||0);
     if((y/7)%2<1){doc.setFillColor(243,247,246);doc.rect(15,y,180,7,'F');}
-    [tag, s.kind==='ventana'?'Ventana':'Puerta', fmt(s.len), fmt(s.alto), fmt(sup), s.mat]
+    [tag, s.kind==='ventana'?'Ventana':'Puerta', fmt(s.len), fmt(s.alto), fmt(sup), s.mat, card]
       .forEach((v,i)=>doc.text(String(v),cols[i],y+5));
     y+=7;
-  }));
+  });});
   y+=4;
   doc.setFont('helvetica','bold');
   doc.text('Σ Ventanas: '+fmt(sumV)+' m²    Σ Puertas: '+fmt(sumP)+' m²',18,y+4);
@@ -918,9 +906,6 @@ function construirPDF(){
   doc.text('Longitud total de envolvente medida: '+fmt(per)+' m',18,y+10);
   doc.setFont('helvetica','normal');doc.setFontSize(9);
   doc.text('Cerramientos — Exterior: '+fmt(lExt)+' m · Medianera: '+fmt(lMed)+' m · Zona común: '+fmt(lCom)+' m',18,y+16);
-  if(modelo.norte!=null){
-    doc.text('Norte orientado a '+Math.round(((modelo.norte%360)+360)%360)+'° (medido en sentido horario desde la vertical del croquis).',18,y+22);
-  }
 
   // Pie
   doc.setDrawColor(122,173,163);doc.setLineWidth(0.4);doc.line(15,286,195,286);
@@ -981,7 +966,7 @@ function exportarDXF(){
 
 // ---------- Configuración de correo y envío a borrador ----------
 // Pega aquí la URL de tu Apps Script (Web App) tras desplegarlo:
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwyd3gAgY6_E2_GrK7Wtypo4WBk8rkcQQXreobS91kdhG-HhEzeDZXtUrGRKFTzGtW6DA/exec';
+const SCRIPT_URL = 'PEGAR_AQUI_URL_APPS_SCRIPT';
 
 function configCorreo(){
   const actual=localStorage.getItem('croquis_correo')||'';
