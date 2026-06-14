@@ -1,7 +1,8 @@
-const CACHE = 'croquis-cee-v4';
+const CACHE = 'croquis-cee-v5';
 const FICHEROS = [
   './',
   './index.html',
+  './config.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',

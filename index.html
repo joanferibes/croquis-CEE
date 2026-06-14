@@ -9,6 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="config.js"></script>
 <style>
   :root{
     --verde:#4A8A80; --verde2:#7AADA3; --tinta:#22302D;
@@ -965,8 +966,8 @@ function exportarDXF(){
 }
 
 // ---------- Configuración de correo y envío a borrador ----------
-// Pega aquí la URL de tu Apps Script (Web App) tras desplegarlo:
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwyd3gAgY6_E2_GrK7Wtypo4WBk8rkcQQXreobS91kdhG-HhEzeDZXtUrGRKFTzGtW6DA/exec';
+// La URL del Apps Script se define en config.js (window.SCRIPT_URL).
+const SCRIPT_URL = window.SCRIPT_URL || '';
 
 function configCorreo(){
   const actual=localStorage.getItem('croquis_correo')||'';
@@ -979,7 +980,7 @@ function b64(str){ return btoa(unescape(encodeURIComponent(str))); }
 
 async function enviarBorrador(){
   if(!modelo.tramos.some(t=>t.segs.length)){alert('No hay nada que enviar.');return;}
-  if(SCRIPT_URL.startsWith('PEGAR')){alert('Falta configurar la URL del Apps Script en el código (constante SCRIPT_URL).');return;}
+  if(!SCRIPT_URL){alert('Falta la URL del Apps Script en config.js.');return;}
   const dest=localStorage.getItem('croquis_correo')||'';
   if(!dest){ if(confirm('No hay correo de colaborador configurado. ¿Configurarlo ahora?')) configCorreo(); return; }
   const nombre=tituloCroquis();
